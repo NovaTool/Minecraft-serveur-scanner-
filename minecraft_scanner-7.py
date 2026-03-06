@@ -374,8 +374,26 @@ async def mc_ping(ip: str, port: int, timeout: float) -> dict | None:
         except Exception: pass
 
 # ─────────────────────────────────────────────────────
-# Affichage
+# Affichage : ligne statut rouge fixe, importantes au-dessus
 # ─────────────────────────────────────────────────────
+_last_status = ""
+
+def _print_above(text: str):
+    """Efface la ligne courante, affiche le texte (avec newline), redessine le statut."""
+    print(f"\r\033[2K{text}", flush=True)
+    if _last_status:
+        print(f"\r\033[2K{_last_status}", end="", flush=True)
+
+def _print_status(text: str):
+    """Met à jour la ligne de statut rouge (écrase, sans newline)."""
+    global _last_status
+    _last_status = text
+    print(f"\r\033[2K{text}", end="", flush=True)
+
+# Raisons à ignorer pour le violet (faux positifs)
+_SKIP_REASONS = ("timeout", "connection reset", "0 bytes", "eof", "reset by peer",
+                 "broken pipe", "connection refused")
+
 def print_scan_result(ip, port, info):
     wl = info["whitelist"]
     wl_color = RE if wl is True else G if wl is False else Y
@@ -384,8 +402,8 @@ def print_scan_result(ip, port, info):
     players  = ", ".join(info['players_list'][:5]) or "—"
     mods_str = f"  {C}Mods  :{R} {', '.join(info['mods'][:5])}\n" if info["mods"] else ""
     motd     = info['motd'][:30] + ("…" if len(info['motd']) > 30 else "")
-    print(
-        f"\n{B}{G}┌─[ SERVEUR MC TROUVÉ ]{'─'*14}┐{R}\n"
+    _print_above(
+        f"{B}{G}┌─[ SERVEUR MC TROUVÉ ]{'─'*14}┐{R}\n"
         f"  {C}IP     {R} {B}{ip}:{port}{R}\n"
         f"  {C}Version{R} {info['version']}\n"
         f"  {C}MOTD   {R} {motd}\n"
@@ -421,7 +439,7 @@ async def scan_ip(ip: str, port: int, timeout: float):
     except Exception:
         stats["scanned"] += 1
         stats["fail"] += 1
-        print(f"\r{RE}✗{R} {ip:<21}", end="", flush=True)
+        _print_status(f"{RE}✗{R} {ip:<21}")
         return
 
     stats["open"] += 1
@@ -454,7 +472,8 @@ async def scan_ip(ip: str, port: int, timeout: float):
 
     if status is None:
         stats["mc_fail"] += 1
-        print(f"\n{P}~ {ip}:{port}  {fail_reason[:30]}{R}", flush=True)
+        if not any(r in fail_reason.lower() for r in _SKIP_REASONS):
+            _print_above(f"{P}~ {ip}:{port}  {fail_reason[:40]}{R}")
         return
 
     stats["found"] += 1
@@ -534,7 +553,7 @@ async def refresh_servers(timeout: float):
 
             if status is None:
                 if not was_offline:
-                    print(f"\n{RE}[OFFLINE]{R} {B}{ip}:{port}{R} → Serveur inaccessible")
+                    _print_above(f"{RE}[OFFLINE]{R} {B}{ip}:{port}{R} → Serveur inaccessible")
                     send_discord_server_offline(ip, port)
                 entry["players_online"] = 0
                 entry["players_list"]   = []
@@ -561,16 +580,16 @@ async def refresh_servers(timeout: float):
             entry["status"]         = "online"
 
             if was_offline:
-                print(f"\n{G}[ONLINE]{R} {B}{ip}:{port}{R} → Retour en ligne ({new_online}/{new_max})")
+                _print_above(f"{G}[ONLINE]{R} {B}{ip}:{port}{R} → Retour en ligne ({new_online}/{new_max})")
                 if new_online > 0:
                     send_discord_server_back_online(ip, port, new_online, new_max)
 
             for player in joined:
-                print(f"\n{G}[+]{R} {B}{player}{R} a rejoint {B}{ip}:{port}{R} ({new_online}/{new_max})")
+                _print_above(f"{G}[+]{R} {B}{player}{R} a rejoint {B}{ip}:{port}{R} ({new_online}/{new_max})")
                 send_discord_player_join(ip, port, player, new_online, new_max)
 
             for player in left:
-                print(f"\n{RE}[-]{R} {B}{player}{R} a quitté {B}{ip}:{port}{R} ({new_online}/{new_max})")
+                _print_above(f"{RE}[-]{R} {B}{player}{R} a quitté {B}{ip}:{port}{R} ({new_online}/{new_max})")
                 send_discord_player_leave(ip, port, player, new_online, new_max)
 
 # ─────────────────────────────────────────────────────
@@ -593,19 +612,23 @@ async def status_loop(interval: float):
 
         thr = f" {Y}~{_throttle_sleep*1000:.0f}ms{R}" if _throttle_sleep > 0 else ""
 
-        print(f"\n{Y}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{R}")
-        print(f"{Y}▸{R} {B}{rate:.0f}{R} IP/s  "
-              f"{G}{stats['found']} MC{R}  "
-              f"CPU {M}{cpu_pct:.0f}%{R}  "
-              f"RAM {M}{ram_pct:.0f}%{R}"
-              f"{thr}")
-        print(f"  {C}Scannées:{R} {stats['scanned']}  "
-              f"{C}WH:{R} {G}{stats['webhook_sent']}{R}✓ {RE}{stats['webhook_err']}{R}✗")
+        rows = [f"{Y}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{R}"]
+        rows.append(
+            f"{Y}▸{R} {B}{rate:.0f}{R} IP/s  "
+            f"{G}{stats['found']} MC{R}  "
+            f"CPU {M}{cpu_pct:.0f}%{R}  "
+            f"RAM {M}{ram_pct:.0f}%{R}{thr}"
+        )
+        rows.append(
+            f"  {C}Scannées:{R} {stats['scanned']}  "
+            f"{C}WH:{R} {G}{stats['webhook_sent']}{R}✓ {RE}{stats['webhook_err']}{R}✗"
+        )
         for e in results_log:
-            st  = f"{G}●{R}" if e.get("status", "online") == "online" else f"{RE}●{R}"
-            pl  = f"{G}{e['players_online']}{R}/{e['players_max']}"
-            print(f"  {st} {B}{e['ip']}:{e['port']}{R} {pl}j  {e['motd'][:22]}")
-        print(f"{Y}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{R}")
+            st = f"{G}●{R}" if e.get("status", "online") == "online" else f"{RE}●{R}"
+            pl = f"{G}{e['players_online']}{R}/{e['players_max']}"
+            rows.append(f"  {st} {B}{e['ip']}:{e['port']}{R} {pl}j  {e['motd'][:22]}")
+        rows.append(f"{Y}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{R}")
+        _print_above("\n".join(rows))
 
 # ─────────────────────────────────────────────────────
 # Sauvegarde JSON
@@ -619,7 +642,7 @@ def save_json(path: str):
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-    print(f"\n{G}Sauvegarde : {path}  ({len(results_log)} serveur(s)){R}")
+    _print_above(f"{G}Sauvegarde : {path}  ({len(results_log)} serveur(s)){R}")
 
 # ─────────────────────────────────────────────────────
 # MAIN
