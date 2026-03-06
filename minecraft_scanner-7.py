@@ -466,7 +466,8 @@ async def scan_ip(ip: str, port: int, timeout: float):
 
     results_log.append(info)
     print_scan_result(ip, port, info)
-    send_discord(ip, port, info)
+    if info.get("players_online", 0) > 0:
+        send_discord(ip, port, info)
 
 # ─────────────────────────────────────────────────────
 # Pool de scan avec génération en batch + throttle adaptatif
@@ -561,7 +562,8 @@ async def refresh_servers(timeout: float):
 
             if was_offline:
                 print(f"\n{G}[ONLINE]{R} {B}{ip}:{port}{R} → Retour en ligne ({new_online}/{new_max})")
-                send_discord_server_back_online(ip, port, new_online, new_max)
+                if new_online > 0:
+                    send_discord_server_back_online(ip, port, new_online, new_max)
 
             for player in joined:
                 print(f"\n{G}[+]{R} {B}{player}{R} a rejoint {B}{ip}:{port}{R} ({new_online}/{new_max})")
