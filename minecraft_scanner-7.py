@@ -109,27 +109,94 @@ def send_discord(ip, port, info: dict):
 
     threading.Thread(target=_run, daemon=True).start()
 
-def send_discord_update(ip, port, online, max_players, players_list):
-    """Mise à jour joueurs dans un thread daemon."""
+def send_discord_player_join(ip, port, player, online, max_players):
+    """Notification de connexion d'un joueur."""
     def _run():
         try:
-            names = ", ".join(players_list[:10]) or "Aucun"
             embed = {
-                "title": "🔄 Mise à jour joueurs",
-                "color": 0x3498DB,
+                "title": f"✅ {player} a rejoint le serveur",
+                "color": 0x2ECC71,
                 "fields": [
-                    {"name": "🌐 IP",      "value": f"`{ip}:{port}`",         "inline": True},
+                    {"name": "🌐 Serveur", "value": f"`{ip}:{port}`",          "inline": True},
                     {"name": "👥 Joueurs", "value": f"{online}/{max_players}", "inline": True},
-                    {"name": "🎮 En ligne","value": names,                    "inline": False},
                 ],
-                "footer": {"text": "Minecraft Scanner - Update"},
+                "footer": {"text": "Minecraft Scanner - Connexion"},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            payload = json.dumps({"embeds": [embed]}, ensure_ascii=False).encode("utf-8")
+            result = _webhook_post(payload)
+            if isinstance(result, int):
+                print(f"\n\033[92m[WEBHOOK] ✓ Connexion {player} envoyée (HTTP {result})\033[0m")
+            else:
+                print(f"\n\033[91m[WEBHOOK] ✗ Erreur connexion {player} → {result}\033[0m")
+        except Exception as e:
+            print(f"\n\033[91m[WEBHOOK] ✗ Exception join {player} → {e}\033[0m")
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def send_discord_player_leave(ip, port, player, online, max_players):
+    """Notification de déconnexion d'un joueur."""
+    def _run():
+        try:
+            embed = {
+                "title": f"🚪 {player} a quitté le serveur",
+                "color": 0xE74C3C,
+                "fields": [
+                    {"name": "🌐 Serveur", "value": f"`{ip}:{port}`",          "inline": True},
+                    {"name": "👥 Joueurs", "value": f"{online}/{max_players}", "inline": True},
+                ],
+                "footer": {"text": "Minecraft Scanner - Déconnexion"},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            payload = json.dumps({"embeds": [embed]}, ensure_ascii=False).encode("utf-8")
+            result = _webhook_post(payload)
+            if isinstance(result, int):
+                print(f"\n\033[92m[WEBHOOK] ✓ Déconnexion {player} envoyée (HTTP {result})\033[0m")
+            else:
+                print(f"\n\033[91m[WEBHOOK] ✗ Erreur déconnexion {player} → {result}\033[0m")
+        except Exception as e:
+            print(f"\n\033[91m[WEBHOOK] ✗ Exception leave {player} → {e}\033[0m")
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def send_discord_server_offline(ip, port):
+    """Notification serveur inaccessible."""
+    def _run():
+        try:
+            embed = {
+                "title": "🔴 Serveur inaccessible",
+                "color": 0x95A5A6,
+                "fields": [
+                    {"name": "🌐 Serveur", "value": f"`{ip}:{port}`", "inline": True},
+                ],
+                "footer": {"text": "Minecraft Scanner - Hors ligne"},
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             payload = json.dumps({"embeds": [embed]}, ensure_ascii=False).encode("utf-8")
             _webhook_post(payload)
         except Exception:
             pass
+    threading.Thread(target=_run, daemon=True).start()
 
+
+def send_discord_server_back_online(ip, port, online, max_players):
+    """Notification serveur de retour en ligne."""
+    def _run():
+        try:
+            embed = {
+                "title": "🟢 Serveur de retour en ligne",
+                "color": 0x00FF7F,
+                "fields": [
+                    {"name": "🌐 Serveur", "value": f"`{ip}:{port}`",          "inline": True},
+                    {"name": "👥 Joueurs", "value": f"{online}/{max_players}", "inline": True},
+                ],
+                "footer": {"text": "Minecraft Scanner - En ligne"},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            payload = json.dumps({"embeds": [embed]}, ensure_ascii=False).encode("utf-8")
+            _webhook_post(payload)
+        except Exception:
+            pass
     threading.Thread(target=_run, daemon=True).start()
 
 # ─────────────────────────────────────────────────────
@@ -434,18 +501,29 @@ async def refresh_servers(timeout):
                 break
             ip   = entry["ip"]
             port = entry["port"]
+            was_offline = entry.get("status") == "offline"
             status = await mc_ping(ip, port, timeout)
+
             if status is None:
                 # Serveur devenu inaccessible
+                if entry.get("status") != "offline":
+                    print(f"\n{RE}[OFFLINE]{R} {B}{ip}:{port}{R} → Serveur inaccessible")
+                    send_discord_server_offline(ip, port)
                 entry["players_online"] = 0
                 entry["players_list"]   = []
                 entry["status"]         = "offline"
                 continue
-            pl = status.get("players", {})
+
+            pl          = status.get("players", {})
             new_online  = pl.get("online", 0)
-            new_max     = pl.get("max",    entry["players_max"])
-            new_list    = [p.get("name","?") for p in pl.get("sample", [])]
-            changed     = (new_online != entry["players_online"] or new_list != entry["players_list"])
+            new_max     = pl.get("max", entry["players_max"])
+            new_list    = [p.get("name", "?") for p in pl.get("sample", [])]
+
+            old_set = set(entry.get("players_list", []))
+            new_set = set(new_list)
+
+            joined = new_set - old_set   # joueurs qui viennent de se connecter
+            left   = old_set - new_set   # joueurs qui viennent de se déconnecter
 
             entry["players_online"] = new_online
             entry["players_max"]    = new_max
@@ -453,12 +531,23 @@ async def refresh_servers(timeout):
             entry["last_seen"]      = datetime.now().isoformat()
             entry["status"]         = "online"
 
-            if changed:
-                names = ", ".join(new_list[:10]) or "Aucun"
-                print(f"\n{G}[REFRESH]{R} {B}{ip}:{port}{R}  "
-                      f"→ Joueurs: {G}{B}{new_online}{R}/{new_max}  "
-                      f"En ligne: {names}")
-                send_discord_update(ip, port, new_online, new_max, new_list)
+            # Serveur de retour en ligne
+            if was_offline:
+                print(f"\n{G}[ONLINE]{R} {B}{ip}:{port}{R} → Serveur de retour en ligne "
+                      f"({new_online}/{new_max})")
+                send_discord_server_back_online(ip, port, new_online, new_max)
+
+            # Joueurs qui ont rejoint
+            for player in joined:
+                print(f"\n{G}[+]{R} {B}{player}{R} a rejoint {B}{ip}:{port}{R} "
+                      f"({new_online}/{new_max})")
+                send_discord_player_join(ip, port, player, new_online, new_max)
+
+            # Joueurs qui ont quitté
+            for player in left:
+                print(f"\n{RE}[-]{R} {B}{player}{R} a quitté {B}{ip}:{port}{R} "
+                      f"({new_online}/{new_max})")
+                send_discord_player_leave(ip, port, player, new_online, new_max)
 
 # ─────────────────────────────────────────────────────
 # Stats périodiques
