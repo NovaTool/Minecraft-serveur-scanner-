@@ -481,8 +481,7 @@ async def scan_ip(ip: str, port: int, timeout: float):
 
     results_log.append(info)
     print_scan_result(ip, port, info)
-    if info.get("players_online", 0) > 0:
-        send_discord(ip, port, info)
+    send_discord(ip, port, info)
 
 # ─────────────────────────────────────────────────────
 # Pool de scan avec génération en batch + throttle adaptatif
@@ -548,9 +547,6 @@ async def refresh_servers(timeout: float):
             status = await mc_ping(ip, port, timeout)
 
             if status is None:
-                if not was_offline:
-                    _print_above(f"{RE}[OFFLINE]{R} {B}{ip}:{port}{R} → Serveur inaccessible")
-                    send_discord_server_offline(ip, port)
                 entry["players_online"] = 0
                 entry["players_list"]   = []
                 entry["status"]         = "offline"
