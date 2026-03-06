@@ -421,8 +421,7 @@ async def scan_ip(ip: str, port: int, timeout: float):
     except Exception:
         stats["scanned"] += 1
         stats["fail"] += 1
-        if verbose:
-            print(f"\r  {RE}✗ {ip:<21} Fermé{R}", end="", flush=True)
+        print(f"\r{RE}✗{R} {ip:<21}", end="", flush=True)
         return
 
     stats["open"] += 1
@@ -455,8 +454,7 @@ async def scan_ip(ip: str, port: int, timeout: float):
 
     if status is None:
         stats["mc_fail"] += 1
-        if verbose:
-            print(f"\r  {P}~ {ip}:{port} [{fail_reason[:20]}]{R}", end="", flush=True)
+        print(f"\n{P}~ {ip}:{port}  {fail_reason[:30]}{R}", flush=True)
         return
 
     stats["found"] += 1
