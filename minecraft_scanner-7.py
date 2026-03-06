@@ -446,20 +446,26 @@ async def scan_ip(ip: str, port: int, timeout: float):
     stats["open"] += 1
     status = None
     fail_reason = ""
-    try:
-        writer.write(_mc_handshake(ip, port) + _STATUS_REQUEST)
-        await asyncio.wait_for(writer.drain(), timeout=timeout)
-        await asyncio.wait_for(_read_varint(reader), timeout=timeout)
-        pkt_id = await asyncio.wait_for(_read_varint(reader), timeout=timeout)
-        if pkt_id != 0:
-            fail_reason = f"bad_pkt_id={pkt_id}"
-        else:
-            jlen = await asyncio.wait_for(_read_varint(reader), timeout=timeout)
+    async def _do_read():
+        nonlocal status, fail_reason
+        try:
+            writer.write(_mc_handshake(ip, port) + _STATUS_REQUEST)
+            await writer.drain()
+            await _read_varint(reader)
+            pkt_id = await _read_varint(reader)
+            if pkt_id != 0:
+                fail_reason = f"bad_pkt_id={pkt_id}"
+                return
+            jlen = await _read_varint(reader)
             if jlen > 65536:
                 fail_reason = f"json_too_large={jlen}"
-            else:
-                raw    = await asyncio.wait_for(reader.readexactly(jlen), timeout=timeout)
-                status = json.loads(raw.decode("utf-8", "replace"))
+                return
+            raw    = await reader.readexactly(jlen)
+            status = json.loads(raw.decode("utf-8", "replace"))
+        except Exception as exc:
+            fail_reason = str(exc)[:40]
+    try:
+        await asyncio.wait_for(_do_read(), timeout=timeout)
     except asyncio.TimeoutError:
         stats["mc_timeout"] += 1
         fail_reason = "timeout"
