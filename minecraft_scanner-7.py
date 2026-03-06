@@ -593,13 +593,15 @@ async def refresh_servers(timeout: float):
                 if new_online > 0:
                     send_discord_server_back_online(ip, port, new_online, new_max)
 
-            for player in joined:
-                _print_above(f"{G}[+]{R} {B}{player}{R} a rejoint {B}{ip}:{port}{R} ({new_online}/{new_max})")
-                send_discord_player_join(ip, port, player, new_online, new_max)
+            # Si online==0, le sample est décoratif (faux joueurs §color) → ignorer
+            if new_online > 0:
+                for player in joined:
+                    _print_above(f"{G}[+]{R} {B}{player}{R} a rejoint {B}{ip}:{port}{R} ({new_online}/{new_max})")
+                    send_discord_player_join(ip, port, player, new_online, new_max)
 
-            for player in left:
-                _print_above(f"{RE}[-]{R} {B}{player}{R} a quitté {B}{ip}:{port}{R} ({new_online}/{new_max})")
-                send_discord_player_leave(ip, port, player, new_online, new_max)
+                for player in left:
+                    _print_above(f"{RE}[-]{R} {B}{player}{R} a quitté {B}{ip}:{port}{R} ({new_online}/{new_max})")
+                    send_discord_player_leave(ip, port, player, new_online, new_max)
 
 # ─────────────────────────────────────────────────────
 # Stats périodiques
