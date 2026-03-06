@@ -564,10 +564,16 @@ async def refresh_servers(timeout: float):
             new_max    = pl.get("max", entry["players_max"])
             new_list   = [p.get("name", "?") for p in pl.get("sample", [])]
 
-            old_set = set(entry.get("players_list", []))
-            new_set = set(new_list)
-            joined  = new_set - old_set
-            left    = old_set - new_set
+            def _norm(name: str) -> str:
+                """Supprime codes §X et timestamps HH:MM:SS pour éviter fausses alertes."""
+                name = re.sub(r'§.', '', name)
+                name = re.sub(r'\d{2}:\d{2}:\d{2}', '', name).strip()
+                return name
+
+            old_norm = {_norm(p): p for p in entry.get("players_list", [])}
+            new_norm = {_norm(p): p for p in new_list}
+            joined   = [new_norm[k] for k in set(new_norm) - set(old_norm)]
+            left     = [old_norm[k] for k in set(old_norm) - set(new_norm)]
 
             entry["players_online"] = new_online
             entry["players_max"]    = new_max
