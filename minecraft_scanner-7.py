@@ -374,15 +374,17 @@ async def mc_ping(ip: str, port: int, timeout: float) -> dict | None:
         except Exception: pass
 
 # ─────────────────────────────────────────────────────
-# Affichage : chaque ligne s'affiche proprement et scroll
+# Affichage : une ligne rouge fixe qui s'écrase, lignes importantes qui scrollent
 # ─────────────────────────────────────────────────────
 def _print_above(text: str):
-    """Affiche une ligne proprement (efface la ligne courante, puis newline)."""
-    print(f"\r\033[2K{text}", flush=True)
+    """Affiche une ligne permanente (violet/vert/stats) depuis la colonne 0."""
+    sys.stdout.write(f"\r{text}\n")
+    sys.stdout.flush()
 
 def _print_status(text: str):
-    """Alias de _print_above — chaque IP scannée s'affiche comme ligne permanente."""
-    print(f"\r\033[2K{text}", flush=True)
+    """Met à jour la ligne rouge unique en bas — s'écrase à chaque IP."""
+    sys.stdout.write(f"\r{text:<60}")
+    sys.stdout.flush()
 
 # Raisons à ignorer pour le violet (faux positifs)
 _SKIP_REASONS = ("timeout", "connection reset", "0 bytes", "eof", "reset by peer",
