@@ -376,13 +376,17 @@ async def mc_ping(ip: str, port: int, timeout: float) -> dict | None:
 # ─────────────────────────────────────────────────────
 # Affichage : une ligne rouge fixe qui s'écrase, lignes importantes qui scrollent
 # ─────────────────────────────────────────────────────
+_IS_TTY = sys.stdout.isatty()
+
 def _print_above(text: str):
     """Affiche une ligne permanente (violet/vert/stats) depuis la colonne 0."""
     sys.stdout.write(f"\r{text}\n")
     sys.stdout.flush()
 
 def _print_status(text: str):
-    """Met à jour la ligne rouge unique en bas — s'écrase à chaque IP."""
+    """Met à jour la ligne rouge unique en bas — seulement si terminal interactif."""
+    if not _IS_TTY:
+        return  # Pas de \r dans les fichiers log (crée des lignes multiples)
     sys.stdout.write(f"\r{text:<60}")
     sys.stdout.flush()
 
