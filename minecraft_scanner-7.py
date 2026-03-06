@@ -70,6 +70,7 @@ stats = {
 }
 results_log: list[dict] = []
 stop_flag = False
+verbose = False   # activé avec --verbose
 MAX_RESULTS = 300          # cap mémoire
 CPU_THROTTLE_HIGH = 85.0   # % CPU → on ralentit
 CPU_THROTTLE_LOW  = 70.0   # % CPU → on relâche
@@ -376,29 +377,22 @@ async def mc_ping(ip: str, port: int, timeout: float) -> dict | None:
 # Affichage
 # ─────────────────────────────────────────────────────
 def print_scan_result(ip, port, info):
-    mods_str    = f"  {C}Mods    :{R} {', '.join(info['mods'][:8])}\n"    if info["mods"]    else ""
-    plugins_str = f"  {C}Plugins :{R} {', '.join(info['plugins'][:8])}\n" if info["plugins"] else ""
-    players_str = f"  {C}En ligne:{R} {', '.join(info['players_list'][:10])}\n" if info["players_list"] else ""
     wl = info["whitelist"]
     wl_color = RE if wl is True else G if wl is False else Y
-    wl_txt   = "Activée" if wl is True else "Désactivée" if wl is False else "Inconnue"
+    wl_txt   = "Oui" if wl is True else "Non" if wl is False else "?"
+    auth     = "Premium" if info['online_mode'] else "Crackée" if info['online_mode'] is False else "?"
+    players  = ", ".join(info['players_list'][:5]) or "—"
+    mods_str = f"  {C}Mods  :{R} {', '.join(info['mods'][:5])}\n" if info["mods"] else ""
+    motd     = info['motd'][:30] + ("…" if len(info['motd']) > 30 else "")
     print(
-        f"\n{B}{G}╔══════════════════════════════════════════╗\n"
-        f"║       SERVEUR MINECRAFT TROUVÉ !         ║\n"
-        f"╚══════════════════════════════════════════╝{R}\n"
-        f"  {C}IP        :{R} {B}{ip}:{port}{R}\n"
-        f"  {C}Logiciel  :{R} {info['software']}\n"
-        f"  {C}Version   :{R} {info['version']}  (protocol {info['protocol']})\n"
-        f"  {C}MOTD      :{R} {info['motd']}\n"
-        f"  {C}Joueurs   :{R} {G}{B}{info['players_online']}{R}/{info['players_max']}\n"
-        f"{players_str}"
-        f"  {C}Mode jeu  :{R} {info['gamemode']}\n"
-        f"  {C}Auth      :{R} {'Online (premium)' if info['online_mode'] else 'Offline (crackée)' if info['online_mode'] is False else 'Inconnu'}\n"
-        f"  {C}Whitelist :{R} {wl_color}{wl_txt}{R}\n"
-        f"  {C}Difficulté:{R} {info['difficulty']}\n"
-        f"  {C}Monde     :{R} {info['level_name']}\n"
-        f"  {C}Favicon   :{R} {info['favicon']}\n"
-        f"{mods_str}{plugins_str}"
+        f"\n{B}{G}┌─[ SERVEUR MC TROUVÉ ]{'─'*14}┐{R}\n"
+        f"  {C}IP     {R} {B}{ip}:{port}{R}\n"
+        f"  {C}Version{R} {info['version']}\n"
+        f"  {C}MOTD   {R} {motd}\n"
+        f"  {C}Joueurs{R} {G}{B}{info['players_online']}{R}/{info['players_max']}  {players}\n"
+        f"  {C}Auth   {R} {auth}  {C}WL:{R} {wl_color}{wl_txt}{R}  {C}SW:{R} {info['software']}\n"
+        f"{mods_str}"
+        f"{B}{G}└{'─'*35}┘{R}"
     )
 
 # ─────────────────────────────────────────────────────
@@ -427,7 +421,8 @@ async def scan_ip(ip: str, port: int, timeout: float):
     except Exception:
         stats["scanned"] += 1
         stats["fail"] += 1
-        print(f"\r  {RE}✗ {ip:<21}  Fermé / Hôte inaccessible{R}", end="", flush=True)
+        if verbose:
+            print(f"\r  {RE}✗ {ip:<21} Fermé{R}", end="", flush=True)
         return
 
     stats["open"] += 1
@@ -460,7 +455,8 @@ async def scan_ip(ip: str, port: int, timeout: float):
 
     if status is None:
         stats["mc_fail"] += 1
-        print(f"\r  {P}~ {ip}:{port:<21}  Ouvert sans MC  [{fail_reason:<25}]{R}", end="", flush=True)
+        if verbose:
+            print(f"\r  {P}~ {ip}:{port} [{fail_reason[:20]}]{R}", end="", flush=True)
         return
 
     stats["found"] += 1
@@ -595,29 +591,21 @@ async def status_loop(interval: float):
         online_servers = [e for e in results_log if e.get("status", "online") == "online"]
         total_players  = sum(e["players_online"] for e in online_servers)
 
-        throttle_info = f"  {Y}[THROTTLE actif: +{_throttle_sleep*1000:.0f}ms]{R}" if _throttle_sleep > 0 else ""
+        thr = f" {Y}~{_throttle_sleep*1000:.0f}ms{R}" if _throttle_sleep > 0 else ""
 
-        print(f"\n{Y}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{R}")
-        print(f"{Y}[STATS]{R} Scannées: {B}{stats['scanned']}{R} | "
-              f"{RE}Fermées:{R} {stats['fail']} | "
-              f"{P}Sans MC:{R} {stats['mc_fail']} | "
-              f"{G}Serveurs MC: {B}{stats['found']}{R} | "
-              f"Vitesse: {B}{rate:.0f}{R} IP/s")
-        print(f"        CPU: {M}{cpu_pct:.0f}%{R} | "
-              f"RAM: {M}{ram_pct:.0f}%{R} | "
-              f"Timeouts: {Y}{stats['mc_timeout']}{R} | "
-              f"Joueurs: {G}{B}{total_players}{R} | "
-              f"Webhook: {G}{stats['webhook_sent']}{R}✓ {RE}{stats['webhook_err']}{R}✗ {Y}{stats['webhook_drop']}{R}↓"
-              f"{throttle_info}")
-        if results_log:
-            print(f"{Y}[SERVEURS ACTIFS]{R}")
-            for e in results_log:
-                st = f"{G}●{R}" if e.get("status", "online") == "online" else f"{RE}●{R}"
-                print(f"  {st} {B}{e['ip']}:{e['port']}{R}  "
-                      f"{e['version']}  "
-                      f"Joueurs: {G}{e['players_online']}{R}/{e['players_max']}  "
-                      f"MOTD: {e['motd'][:40]}")
-        print(f"{Y}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{R}\n")
+        print(f"\n{Y}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{R}")
+        print(f"{Y}▸{R} {B}{rate:.0f}{R} IP/s  "
+              f"{G}{stats['found']} MC{R}  "
+              f"CPU {M}{cpu_pct:.0f}%{R}  "
+              f"RAM {M}{ram_pct:.0f}%{R}"
+              f"{thr}")
+        print(f"  {C}Scannées:{R} {stats['scanned']}  "
+              f"{C}WH:{R} {G}{stats['webhook_sent']}{R}✓ {RE}{stats['webhook_err']}{R}✗")
+        for e in results_log:
+            st  = f"{G}●{R}" if e.get("status", "online") == "online" else f"{RE}●{R}"
+            pl  = f"{G}{e['players_online']}{R}/{e['players_max']}"
+            print(f"  {st} {B}{e['ip']}:{e['port']}{R} {pl}j  {e['motd'][:22]}")
+        print(f"{Y}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{R}")
 
 # ─────────────────────────────────────────────────────
 # Sauvegarde JSON
@@ -645,21 +633,11 @@ async def async_main(args):
     concurrency = args.concurrency if args.concurrency_forced else hw["concurrency"]
 
     print(f"""
-{B}{G}╔══════════════════════════════════════════╗
-║   Minecraft Random IP Scanner [ASYNC]    ║
-╚══════════════════════════════════════════╝{R}
-
-{B}{M}  [ Optimisé Termux / Pixel 9 — 80% ressources ]{R}
-  CPU    : {hw['cpu_cores']} cores  → utilise {hw['use_cores']} (80%)
-  RAM    : {hw['ram_total_gb']} GB total  → {hw['ram_avail_gb']} GB dispo
-  FD max : {hw['fd_limit']}  (limite Android augmentée)
-  Conc.  : {B}{concurrency}{R} connexions simultanées
-  Webhook: queue async avec rate-limit Discord (4.5 req/s)
-
-  Légende : {RE}✗ Fermé{R}  {P}~ Ouvert sans MC{R}  {G}✓ Serveur Minecraft{R}
-  Throttle: automatique si CPU > {CPU_THROTTLE_HIGH:.0f}%
-
-{Y}Démarrage... (Ctrl+C pour arrêter proprement){R}
+{B}{G}┌─[ MC Scanner — Termux ]──────────────┐{R}
+  CPU  {hw['cpu_cores']}c → {hw['use_cores']}c (80%)  RAM {hw['ram_avail_gb']}GB dispo
+  Conc {B}{concurrency}{R}  FD {hw['fd_limit']}  Throttle >{CPU_THROTTLE_HIGH:.0f}%
+{B}{G}└───────────────────────────────────────┘{R}
+{Y}Démarrage...  Ctrl+C pour arrêter{R}
 """)
 
     # Gestion signal (Termux compatible)
@@ -700,7 +678,7 @@ async def async_main(args):
     save_json(args.output)
 
 def main():
-    global stop_flag
+    global stop_flag, verbose
     parser = argparse.ArgumentParser(description="Minecraft Async Scanner — Termux/Pixel 9")
     parser.add_argument("-c", "--concurrency", type=int,   default=0,
                         help="Forcer la concurrence (défaut: auto 80%% hardware)")
@@ -708,8 +686,11 @@ def main():
     parser.add_argument("--timeout",           type=float, default=1.5)
     parser.add_argument("--output",            type=str,   default="minecraft_found.json")
     parser.add_argument("--stats-interval",    type=float, default=10.0)
+    parser.add_argument("-v", "--verbose",     action="store_true",
+                        help="Afficher toutes les IPs (fermées/sans MC)")
     args = parser.parse_args()
     args.concurrency_forced = (args.concurrency > 0)
+    verbose = args.verbose
 
     try:
         asyncio.run(async_main(args))
