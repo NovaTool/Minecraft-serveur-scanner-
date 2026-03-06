@@ -380,7 +380,8 @@ _IS_TTY = sys.stdout.isatty()
 
 def _print_above(text: str):
     """Affiche une ligne permanente (violet/vert/stats) depuis la colonne 0."""
-    sys.stdout.write(f"\r{text}\n")
+    prefix = "\r" if _IS_TTY else ""
+    sys.stdout.write(f"{prefix}{text}\n")
     sys.stdout.flush()
 
 def _print_status(text: str):
